@@ -1,4 +1,5 @@
 """Shared feature definitions, dataset/record validation and pipeline construction."""
+import os
 import numpy as np, pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestClassifier
@@ -78,13 +79,16 @@ def to_frame(clean, feats):
     return X
 
 
-def build_pipeline(feats, n_estimators=300):
+def build_pipeline(feats, n_estimators=None, min_samples_leaf=None):
+    # Defaults 300 trees / leaf 2. RF_TREES and RF_MIN_LEAF shrink the model for small hosts (see render.yaml).
+    n_estimators = n_estimators or int(os.getenv("RF_TREES", 300))
+    min_samples_leaf = min_samples_leaf or int(os.getenv("RF_MIN_LEAF", 2))
     num = [f for f in feats if f in NUM or f == SCORE]
     cat = [f for f in feats if f in CAT]
     pre = ColumnTransformer([
         ("num", SimpleImputer(strategy="median"), num),
         ("cat", Pipeline([("imp", SimpleImputer(strategy="most_frequent")),
                           ("oh", OneHotEncoder(handle_unknown="ignore"))]), cat)])
-    rf = RandomForestClassifier(n_estimators=n_estimators, min_samples_leaf=2, class_weight="balanced_subsample",
+    rf = RandomForestClassifier(n_estimators=n_estimators, min_samples_leaf=min_samples_leaf, class_weight="balanced_subsample",
                                 random_state=SEED, n_jobs=-1)
     return Pipeline([("pre", pre), ("rf", rf)])

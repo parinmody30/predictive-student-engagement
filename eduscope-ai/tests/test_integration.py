@@ -31,7 +31,7 @@ class T(unittest.TestCase):
         cls.df = fixture()
         cls.df.to_csv(cls.csv, index=False)
         train_model.train(validate_df(pd.read_csv(cls.csv))[0], cls.tmp / "m")
-        cls.c = create_app(cls.csv, cls.tmp / "m").test_client()
+        cls.c = create_app(cls.csv, cls.tmp / "m", admin_key="").test_client()
         cls.rec = {k: (None if pd.isna(v) else (v.item() if hasattr(v, "item") else v)) for k, v in cls.df.iloc[0].items() if k != "final_result"}
 
     def test_health_and_models(self):
@@ -85,6 +85,15 @@ class T(unittest.TestCase):
         f = lambda t: {"file": (io.BytesIO(t.encode()), "x.csv")}
         self.assertEqual(self.c.post("/api/dataset/upload", data=f("a,b\n1,2"), content_type="multipart/form-data").status_code, 400)
         self.assertEqual(self.c.post("/api/dataset/upload", data={}, content_type="multipart/form-data").status_code, 400)
+
+    def test_upload_requires_admin_key(self):
+        c = create_app(self.csv, self.tmp / "m", admin_key="s3cret").test_client()
+        f = lambda: {"file": (io.BytesIO(b"a,b\n1,2"), "x.csv")}
+        self.assertEqual(c.post("/api/dataset/upload", data=f(), content_type="multipart/form-data").status_code, 401)
+        self.assertEqual(c.post("/api/dataset/upload", data=f(), headers={"X-Admin-Key": "nope"}, content_type="multipart/form-data").status_code, 401)
+        # correct key passes auth and reaches CSV validation (400 for this invalid file; dataset untouched)
+        self.assertEqual(c.post("/api/dataset/upload", data=f(), headers={"X-Admin-Key": "s3cret"}, content_type="multipart/form-data").status_code, 400)
+        self.assertTrue(c.get("/api/health").get_json()["upload_protected"])
 
     def test_no_dataset(self):
         c = create_app(self.tmp / "none.csv", self.tmp / "none").test_client()

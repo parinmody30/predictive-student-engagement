@@ -16,11 +16,19 @@ Open http://localhost:5000. Run tests: `python -m unittest discover -s tests -v`
 
 You can also open `index.html` directly; it then calls http://localhost:5000 (change under Settings).
 
+## Deploy to Render
+`render.yaml` (repo root) is a Render Blueprint. It installs dependencies, trains the model during the build, and runs the app with gunicorn.
+1. Commit the dataset: `eduscope-ai/backend/data/oulad_day30_features_audited.csv`. The build fails without it.
+2. In Render: **New > Blueprint**, pick this repo and branch, then **Apply**. The site goes live at `https://eduscope-ai.onrender.com` (or a similar name).
+3. `ADMIN_KEY` is generated for you. Find it under the service's **Environment** tab. You only need it to upload a replacement CSV from Data Management; visitors cannot upload without it.
+
+Notes: on the free plan the server sleeps after ~15 min idle, so the first visit takes ~1 minute to wake it. The disk is temporary, so an uploaded CSV is lost on restart or redeploy. To change the data permanently, commit the new CSV and Render retrains it. The deployed forest uses `RF_TREES=150`, `RF_MIN_LEAF=10` to fit 512 MB RAM; the measured metrics shown in the app are for that model.
+
 ## What `train_model.py` does
 Validates the CSV, trains Random Forests once (no search at startup), and writes `backend/models/*.joblib` and `metrics.json`, all measured on held-out data:
 - **primary**: day-30 features *without* `average_score_by_day30` (score availability by day 30 is unverified).
 - **with_score**: experimental variant including the score; missing scores stay NaN and are median-imputed inside the pipeline.
-- Each is evaluated on a stratified 80/20 split (seed 42) and on a course-presentation holdout (latest presentation held out). Fixed settings: 300 trees, min_samples_leaf=2, balanced_subsample. These are not your tuned Colab parameters; edit `build_pipeline` to use them.
+- Each is evaluated on a stratified 80/20 split (seed 42) and on a course-presentation holdout (latest presentation held out). Fixed settings: 300 trees, min_samples_leaf=2, balanced_subsample (override with env vars `RF_TREES`, `RF_MIN_LEAF`). These are not your tuned Colab parameters; edit `build_pipeline` to use them.
 - Never inputs: `final_result`, `id_student`, and `code_presentation` (a cohort label that would undermine the holdout). `code_module`, demographics and day-30 engagement are used.
 - Your Colab numbers (RF 52.8% / XGBoost 57.3%) are historical; the app shows the freshly measured ones. XGBoost is not required.
 

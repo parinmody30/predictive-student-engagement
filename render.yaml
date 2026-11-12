@@ -1,0 +1,20 @@
+# Render Blueprint: in Render, New > Blueprint > pick this repo.
+services:
+  - type: web
+    name: eduscope-ai
+    runtime: python
+    plan: free
+    rootDir: eduscope-ai
+    buildCommand: pip install -r backend/requirements.txt && python backend/train_model.py
+    startCommand: gunicorn --chdir backend --workers 1 --threads 4 --timeout 120 --bind 0.0.0.0:$PORT "app:create_app()"
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      # Smaller forest so the app fits the free plan's 512 MB RAM (~280 MB vs ~1 GB at 300 trees / leaf 2).
+      - key: RF_TREES
+        value: "150"
+      - key: RF_MIN_LEAF
+        value: "10"
+      - key: ADMIN_KEY
+        generateValue: true

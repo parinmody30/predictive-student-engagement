@@ -1,5 +1,5 @@
 """EduScope AI Flask API. Run: python backend/app.py  -> http://localhost:5000"""
-import io, json, logging, os
+import hmac, io, json, logging, os
 from pathlib import Path
 import joblib, pandas as pd
 from flask import Flask, jsonify, request, send_from_directory
@@ -14,7 +14,9 @@ ROOT = BASE.parent
 WARN_RULE = "Flagged when active_days_by_day30 is below the threshold (default 5). A screening signal for human review, not a validated probability or a model prediction."
 
 
-def create_app(data_path=None, models_dir=None):
+def create_app(data_path=None, models_dir=None, admin_key=None):
+    # ADMIN_KEY set (e.g. on Render): uploads need header X-Admin-Key. Unset: uploads open (local use only).
+    admin_key = admin_key if admin_key is not None else os.getenv("ADMIN_KEY", "")
     data_path = Path(data_path or BASE / "data" / "oulad_day30_features_audited.csv")
     models_dir = Path(models_dir or BASE / "models")
     app = Flask(__name__)
@@ -68,7 +70,7 @@ def create_app(data_path=None, models_dir=None):
 
     @app.get("/api/health")
     def health():
-        return jsonify({"status": "ok", "dataset_loaded": S["df"] is not None, "dataset_file": (S["info"] or {}).get("name"),
+        return jsonify({"status": "ok", "upload_protected": bool(admin_key), "dataset_loaded": S["df"] is not None, "dataset_file": (S["info"] or {}).get("name"),
                         "dataset_error": S["err"], "models": [{"key": k, "version": m["version"]} for k, m in S["models"].items()]})
 
     @app.get("/api/dataset/summary")
@@ -83,6 +85,8 @@ def create_app(data_path=None, models_dir=None):
 
     @app.post("/api/dataset/upload")
     def upload():
+        if admin_key and not hmac.compare_digest(request.headers.get("X-Admin-Key", "").encode(), admin_key.encode()):
+            return err("Uploading requires the admin key.", 401)
         f = request.files.get("file")
         if not f or not f.filename:
             return err("Attach a CSV as form field 'file'.")
